@@ -1,6 +1,6 @@
 // Service worker: deixa o app abrir sem internet.
 // Quando publicar uma versão nova, troque o número em CACHE.
-const CACHE = 'pgm-v1.2.0';
+const CACHE = 'pgm-v1.2.1';
 const ARQUIVOS = [
   './',
   'index.html',

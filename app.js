@@ -143,9 +143,14 @@
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ senha: SY.senha, desde: SY.versao, mudancas: envio })
     })
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        return r.text().then(function (t) {
+          try { return JSON.parse(t); }
+          catch (e) { throw new Error('O endereço respondeu, mas não é o script. Confira a implantação (Qualquer pessoa) e se salvou o código.'); }
+        });
+      })
       .then(function (res) {
-        if (!res || !res.ok) throw new Error(res && res.erro === 'senha' ? 'Senha incorreta.' : 'A planilha não respondeu direito.');
+        if (!res || !res.ok) throw new Error(res && res.erro === 'senha' ? 'Senha incorreta.' : 'O script deu erro: ' + ((res && res.erro) || 'sem detalhe'));
         SY.pendentes = SY.pendentes.filter(function (p) {
           return !envio.some(function (e) { return e.colecao === p.colecao && e.id === p.id && e.atualizado === p.atualizado; });
         });
@@ -155,7 +160,7 @@
         if (mudou) { salvar(); renderQuandoLivre(); }
       })
       .catch(function (e) {
-        SY.erro = (e && e.message === 'Senha incorreta.') ? e.message : 'Sem conexão com a planilha. Vou tentar de novo.';
+        SY.erro = (e && e.name !== 'TypeError' && e.message) ? e.message : 'Sem conexão com a planilha. Vou tentar de novo.';
         salvarSY();
       })
       .then(function () {
