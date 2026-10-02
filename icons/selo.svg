@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 10 500 500" width="500" height="500">
+<defs>
+<path id="topS" d="M 52 260 a 208 208 0 0 1 416 0"/>
+<path id="botS" d="M 32 260 a 228 228 0 0 0 456 0"/>
+<clipPath id="beeS"><ellipse cx="4" cy="0" rx="14" ry="9.5"/></clipPath>
+</defs>
+<circle cx="260" cy="260" r="250" fill="#F4D3CF"/>
+<circle cx="260" cy="260" r="243" fill="none" stroke="#7B2D43" stroke-width="3"/>
+<circle cx="260" cy="260" r="192" fill="none" stroke="#7B2D43" stroke-width="1.5"/>
+<text font-family="Jost, sans-serif" font-weight="600" font-size="22" letter-spacing="5" fill="#7B2D43" text-anchor="middle"><textPath href="#topS" startOffset="50%">PIPOCAS GOURMET DA MEL</textPath></text>
+<text font-family="Jost, sans-serif" font-weight="600" font-size="22" letter-spacing="5" fill="#7B2D43" text-anchor="middle"><textPath href="#botS" startOffset="50%">AMOR EM FORMA DE PIPOCA</textPath></text>
+<polygon points="43,251 50.8,255.5 50.8,264.5 43,269 35.2,264.5 35.2,255.5" fill="#E0A63B" stroke="#7B2D43" stroke-width="1.2"/>
+<polygon points="477,251 484.8,255.5 484.8,264.5 477,269 469.2,264.5 469.2,255.5" fill="#E0A63B" stroke="#7B2D43" stroke-width="1.2"/>
+<text x="260" y="304" text-anchor="middle" font-family="'Pinyon Script', cursive" font-size="170" fill="#7B2D43">Mel</text>
+<path d="M 150 326 C 210 342, 310 342, 370 322" fill="none" stroke="#E0A63B" stroke-width="3.5" stroke-linecap="round"/>
+<path d="M 205 220 C 240 172, 285 238, 330 190" fill="none" stroke="#7B2D43" stroke-width="2" stroke-dasharray="2 7" stroke-linecap="round"/>
+<g transform="translate(356 178) rotate(-8) scale(-1.25 1.25)">
+<ellipse cx="-2" cy="-10" rx="6" ry="10" transform="rotate(-20 -2 -10)" fill="#FFF7EE" stroke="#7B2D43" stroke-width="1.2"/>
+<ellipse cx="8" cy="-10" rx="6" ry="10" transform="rotate(15 8 -10)" fill="#FFF7EE" stroke="#7B2D43" stroke-width="1.2"/>
+<ellipse cx="4" cy="0" rx="14" ry="9.5" fill="#E0A63B"/>
+<g clip-path="url(#beeS)"><rect x="2" y="-11" width="4.5" height="22" fill="#3E2A2A"/><rect x="11" y="-11" width="4.5" height="22" fill="#3E2A2A"/></g>
+<ellipse cx="4" cy="0" rx="14" ry="9.5" fill="none" stroke="#3E2A2A" stroke-width="1.2"/>
+<circle cx="-12" cy="0" r="6" fill="#3E2A2A"/>
+<circle cx="-14" cy="-1.5" r="1" fill="#FFF7EE"/>
+<path d="M-14 -5 q-2 -5 -6 -6 M-11 -5.5 q0 -5 -3 -8" stroke="#3E2A2A" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+</g></svg>

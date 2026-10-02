@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pipocas da Mel · Preços</title>
+<meta name="theme-color" content="#7B2D43">
+<meta name="color-scheme" content="light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Pipocas da Mel">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app" id="app">
+  <header class="top">
+    <img class="seal" src="icons/selo-128.png" alt="Pipocas Gourmet da Mel" width="44" height="44">
+    <div class="top-text">
+      <div class="brand">Pipocas Gourmet da Mel</div>
+      <h1 id="title">Ingredientes</h1>
+    </div>
+  </header>
+
+  <main class="views">
+    <section class="view" id="v-ing" aria-labelledby="title"></section>
+    <section class="view" id="v-sab" hidden></section>
+    <section class="view" id="v-orc" hidden></section>
+    <section class="view" id="v-tab" hidden></section>
+    <section class="view" id="v-set" hidden></section>
+  </main>
+
+  <nav class="tabs" aria-label="Telas do app">
+    <button data-go="ing" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h14l-1.2 10H6.2z"/><path d="M8 9V7a4 4 0 0 1 8 0v2"/></svg>
+      <span>Ingredientes</span>
+    </button>
+    <button data-go="sab">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l2.4 10h5.2L17 10z"/><circle cx="8.5" cy="7" r="2.6"/><circle cx="12" cy="5.6" r="2.8"/><circle cx="15.5" cy="7" r="2.6"/></svg>
+      <span>Sabores</span>
+    </button>
+    <button data-go="orc">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/></svg>
+      <span>Orçamento</span>
+    </button>
+    <button data-go="tab">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M4 10h16M10 10v9"/></svg>
+      <span>Tabela</span>
+    </button>
+    <button data-go="set">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>
+      <span>Ajustes</span>
+    </button>
+  </nav>
+</div>
+
+<dialog id="dlg"><div id="dlg-body"></div></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<noscript>Para usar o app, ative o JavaScript no navegador.</noscript>
+<script src="libs/jspdf.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
