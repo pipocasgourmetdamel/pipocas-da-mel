@@ -8,7 +8,7 @@ e guarda uma cópia numa planilha da sua conta. Leva uns 5 minutos e você faz u
 1. Entre em **sheets.google.com** com a sua conta e crie uma **planilha em branco**. Dê um nome, por exemplo *Pipocas da Mel · dados*.
 2. No menu da planilha: **Extensões → Apps Script**.
 3. Apague o código que aparece e cole **todo** o conteúdo do arquivo `Code.gs` desta pasta.
-4. Na linha `const SENHA = 'troque-esta-senha';` troque o texto entre aspas por uma senha sua (letras e números, sem espaços). Anote essa senha.
+4. Na linha `const SENHA = 'troque-esta-senha';` troque **só** o texto entre aspas dessa linha (não use localizar e substituir) (letras e números, sem espaços). Anote essa senha.
 5. Clique no disquete (**Salvar projeto**).
 
 ## 2. Publicar

@@ -12,6 +12,7 @@
 
 // >>> TROQUE ESTA SENHA (use letras e números, sem espaços) <<<
 const SENHA = 'troque-esta-senha';
+const SENHA_PADRAO_DO_MODELO = 'troque-esta-senha'; // NÃO MEXA nesta linha
 
 const CABECALHO = ['colecao', 'id', 'atualizado', 'excluido', 'versao', 'json'];
 
@@ -26,7 +27,7 @@ function doPost(e) {
     trava.waitLock(25000);
     travou = true;
     const req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    if (!SENHA || SENHA === 'troque-esta-senha' || req.senha !== SENHA) {
+    if (!SENHA || SENHA === SENHA_PADRAO_DO_MODELO || req.senha !== SENHA) {
       return saida_({ ok: false, erro: 'senha' });
     }
     return saida_(sincronizar_(req));
