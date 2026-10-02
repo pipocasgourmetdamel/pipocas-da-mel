@@ -9,6 +9,7 @@
       v: 1,
       ingredientes: [],   // {id, nome, tipo:'g'|'un', preco, qtd}
       sabores: [],        // {id, nome, peso, itens:[{ingId,qtd}], outros, preco, margem|null}
+      historico: [],      // orçamentos salvos: {id, criadoEm, cliente, total, itens, linhas}
       orcamento: { cliente: '', linhas: [] }, // linhas: {id, saborId, qtd, un:'pct'|'g'}
       ajustes: {
         margem: 50,
@@ -27,6 +28,7 @@
     r.ajustes = Object.assign({}, base.ajustes, d.ajustes || {});
     if (!Array.isArray(r.ingredientes)) r.ingredientes = [];
     if (!Array.isArray(r.sabores)) r.sabores = [];
+    if (!Array.isArray(r.historico)) r.historico = [];
     if (!Array.isArray(r.orcamento.linhas)) r.orcamento.linhas = [];
     return r;
   }
@@ -44,6 +46,143 @@
   function salvar() {
     try { localStorage.setItem(KEY, JSON.stringify(S)); }
     catch (e) { aviso('Não consegui salvar neste aparelho.'); }
+  }
+
+  /* ---------- Sincronização com a planilha do Google ---------- */
+  var KEY_SY = 'pgm-sync';
+  function syPadrao() { return { url: '', senha: '', versao: 0, pendentes: [], ultimo: 0, erro: '' }; }
+  function carregarSY() {
+    try {
+      var r = localStorage.getItem(KEY_SY);
+      if (r) return Object.assign(syPadrao(), JSON.parse(r));
+    } catch (e) { /* sem sincronização */ }
+    return syPadrao();
+  }
+  var SY = carregarSY();
+  function salvarSY() { try { localStorage.setItem(KEY_SY, JSON.stringify(SY)); } catch (e) { /* ignora */ } }
+
+  var sincronizando = false, timerSync = null;
+
+  function enfileirar(m) {
+    if (!SY.url) return; // sem planilha conectada, não há o que enviar
+    SY.pendentes = SY.pendentes.filter(function (p) { return !(p.colecao === m.colecao && p.id === m.id); });
+    SY.pendentes.push(m);
+    salvarSY();
+    agendarSync();
+  }
+  function marcar(colecao, rec) {
+    rec.atualizado = Date.now();
+    enfileirar({ colecao: colecao, id: rec.id, atualizado: rec.atualizado, excluido: false, dados: rec });
+  }
+  function marcarAjustes() {
+    S.ajustes.atualizado = Date.now();
+    enfileirar({ colecao: 'ajustes', id: 'ajustes', atualizado: S.ajustes.atualizado, excluido: false, dados: S.ajustes });
+  }
+  function marcarExcluido(colecao, id) {
+    enfileirar({ colecao: colecao, id: id, atualizado: Date.now(), excluido: true, dados: null });
+  }
+  function enfileirarTudo() {
+    var agora = Date.now(), p = [];
+    ['ingredientes', 'sabores', 'historico'].forEach(function (c) {
+      S[c].forEach(function (r) {
+        if (!r.atualizado) r.atualizado = agora;
+        p.push({ colecao: c, id: r.id, atualizado: r.atualizado, excluido: false, dados: r });
+      });
+    });
+    if (S.ajustes.atualizado) p.push({ colecao: 'ajustes', id: 'ajustes', atualizado: S.ajustes.atualizado, excluido: false, dados: S.ajustes });
+    SY.pendentes = p;
+    salvarSY(); salvar();
+  }
+  function agendarSync() {
+    clearTimeout(timerSync);
+    timerSync = setTimeout(function () { sincronizar(); }, 1500);
+  }
+
+  function aplicarRemotos(regs) {
+    var mudou = false;
+    (regs || []).forEach(function (r) {
+      if (r.colecao === 'ajustes') {
+        if (!r.excluido && r.dados && (r.atualizado || 0) > (S.ajustes.atualizado || 0)) {
+          S.ajustes = Object.assign({}, padrao().ajustes, r.dados);
+          mudou = true;
+        }
+        return;
+      }
+      var lista = S[r.colecao];
+      if (!Array.isArray(lista)) return;
+      var i = lista.findIndex(function (x) { return x.id === r.id; });
+      var local = i >= 0 ? lista[i] : null;
+      if (r.excluido) {
+        if (local && (r.atualizado || 0) >= (local.atualizado || 0)) { lista.splice(i, 1); mudou = true; }
+      } else if (r.dados && (!local || (r.atualizado || 0) > (local.atualizado || 0))) {
+        if (local) lista[i] = r.dados; else lista.push(r.dados);
+        mudou = true;
+      }
+    });
+    return mudou;
+  }
+
+  var renderAgendado = false;
+  function renderQuandoLivre() {
+    var ativo = document.activeElement;
+    var digitando = ativo && /^(INPUT|SELECT|TEXTAREA)$/.test(ativo.tagName);
+    if (dlg.open || digitando) {
+      if (!renderAgendado) { renderAgendado = true; setTimeout(function () { renderAgendado = false; renderQuandoLivre(); }, 2000); }
+      return;
+    }
+    renderTudo();
+  }
+
+  function sincronizar() {
+    if (!SY.url || sincronizando) return Promise.resolve();
+    if (navigator.onLine === false) { mostrarSync(); return Promise.resolve(); }
+    sincronizando = true; mostrarSync();
+    var envio = SY.pendentes.slice();
+    return fetch(SY.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ senha: SY.senha, desde: SY.versao, mudancas: envio })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error(res && res.erro === 'senha' ? 'Senha incorreta.' : 'A planilha não respondeu direito.');
+        SY.pendentes = SY.pendentes.filter(function (p) {
+          return !envio.some(function (e) { return e.colecao === p.colecao && e.id === p.id && e.atualizado === p.atualizado; });
+        });
+        var mudou = aplicarRemotos(res.registros);
+        SY.versao = res.versao; SY.ultimo = Date.now(); SY.erro = '';
+        salvarSY();
+        if (mudou) { salvar(); renderQuandoLivre(); }
+      })
+      .catch(function (e) {
+        SY.erro = (e && e.message === 'Senha incorreta.') ? e.message : 'Sem conexão com a planilha. Vou tentar de novo.';
+        salvarSY();
+      })
+      .then(function () {
+        sincronizando = false; mostrarSync();
+        if (SY.pendentes.length && !SY.erro) agendarSync();
+      });
+  }
+
+  function textoSync() {
+    if (!SY.url) return '';
+    if (sincronizando) return 'Sincronizando…';
+    if (SY.erro) return SY.erro;
+    if (SY.pendentes.length) return 'Aguardando enviar (' + SY.pendentes.length + ')';
+    return SY.ultimo ? 'Sincronizado às ' + new Date(SY.ultimo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+  }
+  function mostrarSync() {
+    var el = $('#sync-estado');
+    if (el) { var t = textoSync(); el.textContent = t; el.hidden = !t; el.dataset.erro = SY.erro ? '1' : ''; }
+    var st = $('#sync-status-set');
+    if (st) st.textContent = textoSync() || (SY.url ? 'Conectado' : 'Não conectado');
+  }
+  function iniciarSync() {
+    mostrarSync();
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) sincronizar(); });
+    window.addEventListener('online', function () { sincronizar(); });
+    setInterval(function () { if (!document.hidden) sincronizar(); }, 60000);
+    sincronizar();
   }
 
   /* ---------- Utilidades ---------- */
@@ -248,20 +387,43 @@
     return h;
   }
 
+  var orcAba = 'novo';
+  function dataBR(ms) { return new Date(ms).toLocaleDateString('pt-BR'); }
+
+  function htmlSalvos() {
+    if (!S.historico.length) {
+      return '<div class="vazio"><strong>Nenhum orçamento salvo</strong><span>Monte um pedido e toque em "Salvar orçamento".</span></div>';
+    }
+    return S.historico.slice().sort(function (a, b) { return b.criadoEm - a.criadoEm; }).map(function (h) {
+      return '<button class="card linha-ing" data-act="ver-orc" data-id="' + h.id + '">' +
+        '<span><span class="nome">' + esc(h.cliente || 'Sem nome') + '</span><br><span class="sub">' + dataBR(h.criadoEm) + ' · ' + h.itens.length + ' sabor(es)</span></span>' +
+        '<span class="valor">' + brl(h.total) + '</span></button>';
+    }).join('');
+  }
+
   function renderOrc() {
-    var h = '';
-    if (!S.sabores.length) {
-      h = '<div class="vazio"><strong>Cadastre os sabores primeiro</strong><span>O orçamento usa o custo de cada sabor.</span>' +
+    var box = $('#v-orc');
+    if (!S.sabores.length && !S.historico.length) {
+      box.innerHTML = '<div class="vazio"><strong>Cadastre os sabores primeiro</strong><span>O orçamento usa o custo de cada sabor.</span>' +
         '<button class="btn sec pequeno" data-go="sab">Ir para Sabores</button></div>';
-      $('#v-orc').innerHTML = h;
       return;
     }
-    h += '<div class="campo"><label for="orc-cliente">Cliente (opcional)</label>' +
-      '<input type="text" id="orc-cliente" value="' + esc(S.orcamento.cliente) + '" placeholder="Nome de quem pediu"></div>';
-    h += '<div id="orc-linhas" style="display:flex;flex-direction:column;gap:10px">' + linhasOrcHtml() + '</div>';
-    h += '<button class="btn sec bloco" data-act="add-linha">＋ Adicionar sabor ao pedido</button>';
-    h += '<div id="orc-sum"></div>';
-    $('#v-orc').innerHTML = h;
+    var h = '<div class="seg" role="group" aria-label="Orçamento">' +
+      '<button data-act="orc-aba" data-aba="novo" aria-pressed="' + (orcAba === 'novo') + '">Novo pedido</button>' +
+      '<button data-act="orc-aba" data-aba="salvos" aria-pressed="' + (orcAba === 'salvos') + '">Salvos (' + S.historico.length + ')</button></div>';
+    if (orcAba === 'salvos') {
+      h += htmlSalvos();
+    } else if (!S.sabores.length) {
+      h += '<div class="vazio"><strong>Cadastre os sabores primeiro</strong><span>O orçamento usa o custo de cada sabor.</span>' +
+        '<button class="btn sec pequeno" data-go="sab">Ir para Sabores</button></div>';
+    } else {
+      h += '<div class="campo"><label for="orc-cliente">Cliente (opcional)</label>' +
+        '<input type="text" id="orc-cliente" value="' + esc(S.orcamento.cliente) + '" placeholder="Nome de quem pediu"></div>';
+      h += '<div id="orc-linhas" style="display:flex;flex-direction:column;gap:10px">' + linhasOrcHtml() + '</div>';
+      h += '<button class="btn sec bloco" data-act="add-linha">＋ Adicionar sabor ao pedido</button>';
+      h += '<div id="orc-sum"></div>';
+    }
+    box.innerHTML = h;
     atualizarResumoOrc();
   }
 
@@ -294,6 +456,7 @@
     }
     h += '<div class="linha-botoes"><button class="btn" data-act="orc-pdf">Enviar PDF</button>' +
       '<button class="btn sec" data-act="orc-share">Enviar texto</button></div>' +
+      '<button class="btn sec bloco" data-act="orc-salvar">Salvar orçamento</button>' +
       '<button class="btn perigo bloco" data-act="orc-limpar">Limpar pedido</button>';
     box.innerHTML = h;
   }
@@ -335,30 +498,30 @@
 
   function hojeTxt() { return new Date().toLocaleDateString('pt-BR'); }
 
-  function docOrcamento() {
-    var r = calcOrcamento();
-    var h = '<div class="doc"><div class="doc-head"><img src="icons/selo-512.png" alt="">' +
-      '<div><h2>Orçamento</h2><p>' + (S.orcamento.cliente ? 'Cliente: ' + esc(S.orcamento.cliente) + ' · ' : '') + hojeTxt() + '</p></div></div>';
-    h += '<table><thead><tr><th>Sabor</th><th class="r">Qtd.</th><th class="r">Valor</th></tr></thead><tbody>';
-    r.linhas.forEach(function (x) {
-      var qtd = x.l.un === 'g' ? dec(x.l.qtd, 0) + ' g (≈ ' + dec(x.pk, 1) + ' pacotes)' : dec(x.pk, 1) + ' pacote(s) de ' + dec(x.s.peso, 0) + ' g';
-      h += '<tr><td>' + esc(x.s.nome) + '</td><td class="r">' + qtd + '</td><td class="r">' + brl(x.a.venda * x.pk) + '</td></tr>';
-    });
-    h += '</tbody><tfoot><tr class="total"><td colspan="2">Total</td><td class="r">' + brl(r.venda) + '</td></tr></tfoot></table>';
-    h += rodapeDoc() + '</div>';
-    return h;
+  // Foto do orçamento: guarda os valores de quando foi feito
+  function snapshotOrcamento() {
+    var o = calcOrcamento();
+    var uteis = o.linhas.filter(function (x) { return x.pk > 0; });
+    return {
+      id: uid(), criadoEm: Date.now(), cliente: S.orcamento.cliente.trim(), total: uteis.reduce(function (s, x) { return s + x.a.venda * x.pk; }, 0),
+      itens: uteis.map(function (x) {
+        return {
+          nome: x.s.nome,
+          quantidade: x.l.un === 'g' ? dec(x.l.qtd, 0) + ' g (' + dec(x.pk, 1) + ' pacotes)' : dec(x.pk, 1) + ' pacote(s) de ' + dec(x.s.peso, 0) + ' g',
+          valor: x.a.venda * x.pk
+        };
+      }),
+      linhas: uteis.map(function (x) { return { saborId: x.l.saborId, qtd: x.l.qtd, un: x.l.un }; })
+    };
   }
 
-  function textoOrcamento() {
-    var r = calcOrcamento();
+  function textoOrcamento(h) {
+    h = h || snapshotOrcamento();
     var t = '*Orçamento · Pipocas Gourmet da Mel*\n';
-    if (S.orcamento.cliente) t += 'Cliente: ' + S.orcamento.cliente + '\n';
+    if (h.cliente) t += 'Cliente: ' + h.cliente + '\n';
     t += '\n';
-    r.linhas.forEach(function (x) {
-      var q = x.l.un === 'g' ? dec(x.l.qtd, 0) + ' g' : dec(x.pk, 1) + ' pacote(s) de ' + dec(x.s.peso, 0) + ' g';
-      t += '• ' + x.s.nome + ' · ' + q + ' · ' + brl(x.a.venda * x.pk) + '\n';
-    });
-    t += '\n*Total: ' + brl(r.venda) + '*';
+    h.itens.forEach(function (i) { t += '• ' + i.nome + ' · ' + i.quantidade + ' · ' + brl(i.valor) + '\n'; });
+    t += '\n*Total: ' + brl(h.total) + '*';
     if (S.ajustes.validade) t += '\n' + S.ajustes.validade;
     return t;
   }
@@ -423,19 +586,15 @@
     };
   }
 
-  function dadosOrcamento() {
-    var o = calcOrcamento();
-    var linhas = o.linhas.map(function (x) {
-      var q = x.l.un === 'g' ? dec(x.l.qtd, 0) + ' g (' + dec(x.pk, 1) + ' pacotes)' : dec(x.pk, 1) + ' pacote(s) de ' + dec(x.s.peso, 0) + ' g';
-      return [x.s.nome, q, brl(x.a.venda * x.pk)];
-    });
+  function dadosOrcamento(h) {
+    h = h || snapshotOrcamento();
     var r = rodapeDados();
-    var cli = S.orcamento.cliente.trim();
     return {
-      titulo: 'Orçamento', sub: (cli ? 'Cliente: ' + cli + ' · ' : '') + hojeTxt(),
+      titulo: 'Orçamento', sub: (h.cliente ? 'Cliente: ' + h.cliente + ' · ' : '') + dataBR(h.criadoEm),
       cols: [{ t: 'SABOR', x: M_PDF + 2, w: 74 }, { t: 'QUANTIDADE', x: 152, a: 'r' }, { t: 'VALOR', x: 192, a: 'r', b: true }],
-      linhas: linhas, total: brl(o.venda), notas: r.notas, contatos: r.contatos,
-      arquivo: 'orcamento-' + (slug(cli) || 'pipocas-da-mel') + '.pdf'
+      linhas: h.itens.map(function (i) { return [i.nome, i.quantidade, brl(i.valor)]; }),
+      total: brl(h.total), notas: r.notas, contatos: r.contatos,
+      arquivo: 'orcamento-' + (slug(h.cliente) || 'pipocas-da-mel') + '.pdf'
     };
   }
 
@@ -575,6 +734,16 @@
     h += '<div class="campo"><label for="aj-wpp">WhatsApp</label><input type="text" id="aj-wpp" data-aj="whatsapp" value="' + esc(a.whatsapp) + '" inputmode="tel"></div>';
     h += '<div class="campo"><label for="aj-val">Validade (aparece nos PDFs)</label><input type="text" id="aj-val" data-aj="validade" value="' + esc(a.validade) + '" placeholder="Ex.: Preços válidos até 31/12"></div>';
     h += '<div class="campo"><label for="aj-obs">Observação (aparece nos PDFs)</label><textarea id="aj-obs" data-aj="obs" placeholder="Ex.: Pedido confirmado com sinal de 50%">' + esc(a.obs) + '</textarea></div>';
+    var ligado = !!SY.url;
+    h += '<div class="card"><div class="rotulo">Sincronizar com a planilha do Google</div>' +
+      '<span class="dica">Deixa os mesmos dados nos aparelhos de vocês e guarda uma cópia na sua planilha.</span>' +
+      '<div class="campo"><label for="sy-url">Endereço do aplicativo da web</label><input type="text" id="sy-url" value="' + esc(SY.url) + '" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off" autocorrect="off" spellcheck="false"' + (ligado ? ' readonly' : '') + '></div>' +
+      '<div class="campo"><label for="sy-senha">Senha</label><input type="password" id="sy-senha" value="' + esc(SY.senha) + '" autocomplete="off"' + (ligado ? ' readonly' : '') + '></div>' +
+      '<div class="hoje neutro" id="sync-status-set">' + esc(textoSync() || (ligado ? 'Conectado' : 'Não conectado')) + '</div>' +
+      (ligado
+        ? '<div class="linha-botoes"><button class="btn" data-act="sync-agora">Sincronizar agora</button><button class="btn sec" data-act="sync-desconectar">Desconectar</button></div>'
+        : '<button class="btn bloco" data-act="sync-conectar">Conectar e sincronizar</button>') +
+      '</div>';
     h += '<div class="card"><div class="rotulo">Backup dos dados</div>' +
       '<span class="dica">Seus dados ficam só neste aparelho. Exporte de vez em quando e guarde o arquivo no iCloud ou mande para você mesmo.</span>' +
       '<div class="linha-botoes"><button class="btn sec" data-act="exportar">Exportar backup</button>' +
@@ -583,7 +752,7 @@
     h += '<div class="card"><div class="rotulo">Instalar no iPhone</div>' +
       '<span class="dica">Abra o endereço do app no Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</span></div>';
     h += '<button class="btn perigo bloco" data-act="apagar">Apagar todos os dados</button>';
-    h += '<p class="dica" style="text-align:center">Pipocas da Mel · versão 1.0</p>';
+    h += '<p class="dica" style="text-align:center">Pipocas da Mel · versão 1.2</p>';
     $('#v-set').innerHTML = h;
   }
 
@@ -653,8 +822,11 @@
     if (d.id) {
       var ing = ingPorId(d.id);
       ing.nome = nome; ing.preco = preco; ing.qtd = q; ing.tipo = tipo;
+      marcar('ingredientes', ing);
     } else {
-      S.ingredientes.push({ id: uid(), nome: nome, tipo: tipo, preco: preco, qtd: q });
+      var novoIng = { id: uid(), nome: nome, tipo: tipo, preco: preco, qtd: q };
+      S.ingredientes.push(novoIng);
+      marcar('ingredientes', novoIng);
     }
     salvar(); fecharDlg(); renderTudo(); aviso('Ingrediente salvo.');
   }
@@ -667,7 +839,13 @@
     if (usos.length) msg += '\nEle será tirado de ' + usos.length + ' sabor(es) e o custo deles vai mudar.';
     if (!confirm(msg)) return;
     S.ingredientes = S.ingredientes.filter(function (i) { return i.id !== ing.id; });
-    S.sabores.forEach(function (s) { s.itens = (s.itens || []).filter(function (it) { return it.ingId !== ing.id; }); });
+    marcarExcluido('ingredientes', ing.id);
+    S.sabores.forEach(function (s) {
+      if ((s.itens || []).some(function (it) { return it.ingId === ing.id; })) {
+        s.itens = s.itens.filter(function (it) { return it.ingId !== ing.id; });
+        marcar('sabores', s);
+      }
+    });
     salvar(); fecharDlg(); renderTudo(); aviso('Ingrediente excluído.');
   }
 
@@ -789,9 +967,11 @@
     if (rascunho.id) {
       var atualS = saborPorId(rascunho.id);
       Object.assign(atualS, s);
+      marcar('sabores', atualS);
     } else {
       s.id = uid();
       S.sabores.push(s);
+      marcar('sabores', s);
     }
     salvar(); fecharDlg(); renderTudo(); aviso('Sabor salvo.');
   }
@@ -801,6 +981,7 @@
     s.id = uid();
     s.nome = (s.nome || 'Sabor') + ' (cópia)';
     S.sabores.push(s);
+    marcar('sabores', s);
     salvar(); fecharDlg(); renderTudo(); aviso('Sabor duplicado. Toque nele para editar.');
   }
 
@@ -808,8 +989,28 @@
     var s = saborPorId(rascunho.id);
     if (!s || !confirm('Excluir o sabor "' + s.nome + '"?')) return;
     S.sabores = S.sabores.filter(function (x) { return x.id !== s.id; });
+    marcarExcluido('sabores', s.id);
     S.orcamento.linhas = S.orcamento.linhas.filter(function (l) { return l.saborId !== s.id; });
     salvar(); fecharDlg(); renderTudo(); aviso('Sabor excluído.');
+  }
+
+  function abrirOrcSalvo(id) {
+    var h = S.historico.find(function (x) { return x.id === id; });
+    if (!h) return;
+    var linhas = h.itens.map(function (i) {
+      return '<tr><td>' + esc(i.nome) + '</td><td class="r">' + esc(i.quantidade) + '</td><td class="r"><b>' + brl(i.valor) + '</b></td></tr>';
+    }).join('');
+    corpoDlg.innerHTML =
+      '<div class="dlg-topo"><h2>' + esc(h.cliente || 'Orçamento') + '</h2><span class="muted">' + dataBR(h.criadoEm) + '</span></div>' +
+      '<div class="dlg-corpo"><div class="doc" style="padding:12px"><table><thead><tr><th>Sabor</th><th class="r">Qtd.</th><th class="r">Valor</th></tr></thead><tbody>' + linhas +
+      '</tbody><tfoot><tr class="total"><td colspan="2">Total</td><td class="r">' + brl(h.total) + '</td></tr></tfoot></table></div>' +
+      '<span class="dica">Os valores são os de quando você salvou o orçamento.</span></div>' +
+      '<div class="dlg-base"><div class="linha-botoes"><button class="btn" data-act="hist-pdf" data-id="' + h.id + '">Enviar PDF</button>' +
+      '<button class="btn sec" data-act="hist-share" data-id="' + h.id + '">Enviar texto</button></div>' +
+      '<button class="btn sec pequeno bloco" data-act="hist-refazer" data-id="' + h.id + '">Refazer com os preços de hoje</button>' +
+      '<div class="linha-botoes"><button class="btn sec pequeno" data-act="fechar">Fechar</button>' +
+      '<button class="btn perigo pequeno" data-act="hist-excluir" data-id="' + h.id + '">Excluir</button></div></div>';
+    abrirDlg('orcsalvo');
   }
 
   /* ---------- Backup ---------- */
@@ -838,6 +1039,12 @@
         if (!d || !Array.isArray(d.ingredientes) || !Array.isArray(d.sabores)) throw new Error('formato');
         if (!confirm('Importar este backup? Os dados atuais deste aparelho serão substituídos.')) return;
         S = mesclar(padrao(), d);
+        if (SY.url) {
+          var agora = Date.now();
+          ['ingredientes', 'sabores', 'historico'].forEach(function (c) { S[c].forEach(function (r) { r.atualizado = agora; }); });
+          if (S.ajustes.atualizado) S.ajustes.atualizado = agora;
+          enfileirarTudo(); agendarSync();
+        }
         salvar(); renderTudo(); aviso('Backup importado.');
       } catch (e) {
         aviso('Esse arquivo não parece um backup do app.');
@@ -849,6 +1056,7 @@
   /* ---------- Render geral e eventos ---------- */
   function renderTudo() {
     renderIng(); renderSab(); renderOrc(); renderTab(); renderSet();
+    mostrarSync();
   }
 
   document.addEventListener('click', function (e) {
@@ -889,10 +1097,57 @@
       case 'orc-share': enviarTexto(textoOrcamento()); break;
       case 'tab-pdf': entregarPDF(dadosTabela()); break;
       case 'tab-share': enviarTexto(textoTabela()); break;
+      case 'orc-aba': orcAba = b.dataset.aba; renderOrc(); break;
+      case 'orc-salvar': {
+        var foto = snapshotOrcamento();
+        if (!foto.itens.length) { aviso('Escolha pelo menos um sabor e a quantidade.'); break; }
+        S.historico.push(foto); marcar('historico', foto);
+        S.orcamento = { cliente: '', linhas: [] }; orcAba = 'salvos';
+        salvar(); renderOrc(); aviso('Orçamento salvo.');
+        break;
+      }
+      case 'ver-orc': abrirOrcSalvo(b.dataset.id); break;
+      case 'hist-pdf': { var hp = S.historico.find(function (x) { return x.id === b.dataset.id; }); if (hp) entregarPDF(dadosOrcamento(hp)); break; }
+      case 'hist-share': { var hs = S.historico.find(function (x) { return x.id === b.dataset.id; }); if (hs) enviarTexto(textoOrcamento(hs)); break; }
+      case 'hist-refazer': {
+        var hr = S.historico.find(function (x) { return x.id === b.dataset.id; });
+        if (!hr) break;
+        S.orcamento = {
+          cliente: hr.cliente,
+          linhas: hr.linhas.filter(function (l) { return saborPorId(l.saborId); }).map(function (l) { return { id: uid(), saborId: l.saborId, qtd: l.qtd, un: l.un }; })
+        };
+        fecharDlg(); orcAba = 'novo'; salvar(); renderOrc(); ir('orc'); aviso('Pedido carregado com os preços de hoje.');
+        break;
+      }
+      case 'hist-excluir': {
+        var he = S.historico.find(function (x) { return x.id === b.dataset.id; });
+        if (he && confirm('Excluir este orçamento salvo?')) {
+          S.historico = S.historico.filter(function (x) { return x.id !== he.id; });
+          marcarExcluido('historico', he.id);
+          salvar(); fecharDlg(); renderOrc(); aviso('Orçamento excluído.');
+        }
+        break;
+      }
+      case 'sync-conectar': {
+        var u = ($('#sy-url').value || '').trim(), sn = ($('#sy-senha').value || '').trim();
+        if (!/^https:\/\/script\.google\.com\/(a\/macros\/[^\/]+\/|macros\/)s\/[^\s]+\/exec$/.test(u)) { aviso('Esse endereço não parece o do aplicativo da web (termina em /exec).'); break; }
+        if (!sn) { aviso('Digite a senha que você definiu no script.'); break; }
+        SY = { url: u, senha: sn, versao: 0, pendentes: [], ultimo: 0, erro: '' };
+        enfileirarTudo(); renderSet();
+        sincronizar().then(function () { renderSet(); aviso(SY.erro || 'Conectado e sincronizado.'); });
+        break;
+      }
+      case 'sync-agora': sincronizar().then(function () { renderSet(); aviso(SY.erro || 'Sincronizado.'); }); break;
+      case 'sync-desconectar':
+        if (confirm('Desconectar da planilha? Os dados continuam neste aparelho e na planilha.')) { SY = syPadrao(); salvarSY(); renderSet(); mostrarSync(); aviso('Desconectado.'); }
+        break;
       case 'exportar': exportar(); break;
       case 'importar': $('#arq-imp').click(); break;
       case 'apagar':
-        if (confirm('Apagar TODOS os ingredientes, sabores e ajustes deste aparelho?') && confirm('Tem certeza? Isso não dá para desfazer.')) {
+        if (confirm('Apagar TODOS os ingredientes, sabores, orçamentos e ajustes?' + (SY.url ? '\nComo a planilha está conectada, isso apaga também na planilha e nos outros aparelhos.' : '')) && confirm('Tem certeza? Isso não dá para desfazer.')) {
+          if (SY.url) {
+            ['ingredientes', 'sabores', 'historico'].forEach(function (c) { S[c].forEach(function (r) { marcarExcluido(c, r.id); }); });
+          }
           S = padrao(); salvar(); renderTudo(); aviso('Dados apagados.');
         }
         break;
@@ -931,6 +1186,7 @@
       if (k === 'margem') S.ajustes.margem = Math.max(0, Math.min(95, num(el.value)));
       else if (k === 'arredondar') S.ajustes.arredondar = parseFloat(el.value) || 0;
       else S.ajustes[k] = el.value;
+      marcarAjustes();
       salvar();
       if (e.type === 'change') { renderSab(); renderTab(); renderOrc(); }
     }
@@ -949,6 +1205,7 @@
   renderTudo();
   ir('ing');
   preparar();
+  iniciarSync();
 
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener('load', function () {
@@ -960,8 +1217,9 @@
   window.PGM = {
     estado: function () { return S; },
     custoUn: custoUn, custoSabor: custoSabor, analise: analise, calcOrcamento: calcOrcamento, num: num,
-    docTabela: docTabela, docOrcamento: docOrcamento, textoOrcamento: textoOrcamento, textoTabela: textoTabela,
+    docTabela: docTabela, textoOrcamento: textoOrcamento, textoTabela: textoTabela,
     renderTudo: renderTudo, ir: ir, salvar: salvar,
-    preparar: preparar, montarPDF: montarPDF, dadosTabela: dadosTabela, dadosOrcamento: dadosOrcamento
+    preparar: preparar, montarPDF: montarPDF, dadosTabela: dadosTabela, dadosOrcamento: dadosOrcamento,
+    snapshotOrcamento: snapshotOrcamento, sincronizar: sincronizar, sy: function () { return SY; }
   };
 })();

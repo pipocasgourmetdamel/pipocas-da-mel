@@ -122,7 +122,7 @@ button.card:active { background: var(--blush-soft); }
 .campo { display: flex; flex-direction: column; gap: 6px; }
 .campo > label, .rotulo { font-size: 14px; font-weight: 600; color: var(--vinho); letter-spacing: .3px; }
 .dica { font-size: 13px; color: var(--muted); }
-input[type="text"], input[type="search"], select, textarea {
+input[type="text"], input[type="search"], input[type="password"], input[type="url"], select, textarea {
   width: 100%; min-height: 48px; padding: 10px 12px;
   font-size: 17px; background: #fff; border: 1.5px solid var(--linha); border-radius: 12px;
   appearance: none; -webkit-appearance: none;
@@ -194,3 +194,12 @@ dialog::backdrop { background: rgba(62, 42, 42, .5); }
 }
 #toast.on { opacity: 1; transform: translate(-50%, 0); }
 
+
+/* Abas internas (Novo / Salvos) */
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--blush-soft); border: 1px solid var(--linha); border-radius: 14px; padding: 4px; }
+.seg button { appearance: none; border: 0; background: transparent; min-height: 44px; border-radius: 10px; font-weight: 500; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--vinho); color: var(--creme); font-weight: 600; }
+
+/* Estado da sincronização */
+.sync { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.sync[data-erro="1"] { color: var(--ruim); font-weight: 500; }

@@ -20,3 +20,7 @@ Pipocas Gourmet da Mel. Funciona no navegador do iPhone e pode ficar na tela de 
 - Os dados ficam salvos **só no aparelho** (localStorage). Use **Ajustes → Exportar backup** de vez em quando.
 - Para publicar uma versão nova, troque o número em `CACHE` no arquivo `sw.js`.
 - Fontes: Jost e Pinyon Script (licença SIL OFL, veja a pasta `fonts`).
+
+## Sincronização com o Google Planilhas (v1.2)
+
+Opcional. Veja `planilha/PASSO-A-PASSO.md`. O app também passou a ter **Orçamento → Salvos**, com o histórico de orçamentos.
